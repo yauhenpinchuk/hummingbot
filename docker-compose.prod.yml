@@ -1,0 +1,91 @@
+# Production Docker Compose — SOL-PUMP LP Bot
+#
+# References pre-built images from GitHub Container Registry (GHCR).
+# Images are built by the GitHub Actions workflow (.github/workflows/deploy.yml).
+# Do NOT add build: sections to this file.
+#
+# Secrets are loaded from ../.secrets/env on the server (chmod 600).
+# Create from .env.example — see First-Time Setup below.
+#
+# Server directory layout:
+#   /opt/sol-pump-bot/
+#     hummingbot/      ← this repo (git clone yauhenpinchuk/hummingbot)
+#     .secrets/env     ← secrets file, never committed
+#
+# First-time setup on server:
+#   mkdir -p /opt/sol-pump-bot/.secrets
+#   cp hummingbot/.env.example /opt/sol-pump-bot/.secrets/env
+#   chmod 600 /opt/sol-pump-bot/.secrets/env
+#   nano /opt/sol-pump-bot/.secrets/env   ← fill in real passwords
+#   # Copy encrypted connector creds and certs from local machine:
+#   rsync -av conf/connectors/ server:/opt/sol-pump-bot/hummingbot/conf/connectors/
+#   rsync -av certs/           server:/opt/sol-pump-bot/hummingbot/certs/
+#
+# Deploy command (runs automatically via GitHub Actions on push to master):
+#   docker compose -f docker-compose.prod.yml --env-file ../.secrets/env pull
+#   docker compose -f docker-compose.prod.yml --env-file ../.secrets/env up -d
+
+services:
+  # ─── Gateway ────────────────────────────────────────────────────────────────
+  gateway:
+    image: ghcr.io/yauhenpinchuk/sol-pump-gateway:latest
+    container_name: sol_pump_gateway
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:15888:15888"   # localhost only — not publicly exposed
+    volumes:
+      - ./certs:/home/gateway/certs           # TLS certs shared with hummingbot
+      - ./gateway-conf:/home/gateway/conf     # wallets, chains, tokens (set up once)
+      - gateway_logs:/home/gateway/logs
+    environment:
+      - GATEWAY_PASSPHRASE=${GATEWAY_PASSPHRASE}
+      - DEV=false
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+    healthcheck:
+      test: ["CMD", "node", "-e",
+        "require('http').get('http://localhost:15888/', r => process.exit(r.statusCode < 500 ? 0 : 1)).on('error', () => process.exit(1))"]
+      interval: 30s
+      timeout: 10s
+      start_period: 30s
+      retries: 3
+
+  # ─── Hummingbot ─────────────────────────────────────────────────────────────
+  hummingbot:
+    image: ghcr.io/yauhenpinchuk/sol-pump-hummingbot:latest
+    container_name: sol_pump_hummingbot
+    restart: unless-stopped
+    network_mode: host             # reaches gateway on localhost:15888
+    depends_on:
+      gateway:
+        condition: service_healthy
+    volumes:
+      - ./conf:/home/hummingbot/conf
+      - ./conf/connectors:/home/hummingbot/conf/connectors
+      - ./conf/strategies:/home/hummingbot/conf/strategies
+      - ./conf/controllers:/home/hummingbot/conf/controllers
+      - ./conf/scripts:/home/hummingbot/conf/scripts
+      - ./scripts:/home/hummingbot/scripts
+      - ./controllers:/home/hummingbot/controllers
+      - ./certs:/home/hummingbot/certs        # same certs dir as gateway
+      - hummingbot_logs:/home/hummingbot/logs
+      - hummingbot_data:/home/hummingbot/data
+    environment:
+      - CONFIG_PASSWORD=${CONFIG_PASSWORD}
+      - CONFIG_FILE_NAME=v2_with_controllers.py
+      - SCRIPT_CONFIG=sol_pump_lp.yml
+    tty: true
+    stdin_open: true
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+volumes:
+  gateway_logs:
+  hummingbot_logs:
+  hummingbot_data:

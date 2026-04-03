@@ -1,0 +1,36 @@
+id: sol_pump_lp_1
+controller_name: lp_rebalancer
+controller_type: generic
+
+# Connection
+# trading_pair confirmed: gateway token list maps So111...112 → "SOL", pumpC...Dfn → "PUMP"
+connector_name: raydium/clmm
+network: mainnet-beta
+trading_pair: SOL-PUMP
+pool_address: 45ssPkUQs1ssbeDqxD2mZrMdJYAXF7GyQyhS5xDXuWC5
+
+# Capital
+# Start: ~3.3 SOL (~$500 at $150/SOL) for validation
+# After 48h stable: update to ~23.0 SOL (~$3,500) for full allocation
+total_amount_quote: '3.3'
+side: 0  # 0=BOTH (operator holds SOL + PUMP)
+
+# Range — ±4% total width
+# Pool history: 24h spread 4.1%, 7d spread 6.5%, 30d spread 25.9%
+# ±4% (8.0%) covers a full typical day, ~3x concentration vs pool average
+# Expected ~6-12 rebalances/month vs ~10-20 at ±3%
+position_width_pct: '8.0'
+position_offset_pct: '0.3'  # safety buffer: shifts bounds if price moves during TX
+
+# Rebalance timing
+rebalance_seconds: 600          # 10 min out-of-range before rebalancing
+rebalance_threshold_pct: '0.5'  # price must be 0.5% beyond bounds before timer starts
+
+# Price limits — calibrated from 30d history (ATL 40,852 / ATH 51,429 PUMP/SOL)
+# Current price: ~48,264. Pool created Jan 2025 (3 months of history available).
+# KEEP logic: once BUY hits buy_price_max, controller stops chasing upward
+# and holds position to catch pullback. Same logic on downside with sell_price_min.
+buy_price_min:  '36000'  # -12% below ATL — stop buying SOL if PUMP collapses
+buy_price_max:  '51500'  # just above ATH (51,429) — anchor for BUY positions
+sell_price_min: '44000'  # above ATL with buffer — anchor for SELL positions
+sell_price_max: '58000'  # +20% above ATH — stop selling if PUMP moons hard

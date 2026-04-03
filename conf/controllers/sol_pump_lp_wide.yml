@@ -1,0 +1,32 @@
+id: sol_pump_lp_wide
+controller_name: lp_rebalancer
+controller_type: generic
+
+# Connection
+connector_name: raydium/clmm
+network: mainnet-beta
+trading_pair: SOL-PUMP
+pool_address: 45ssPkUQs1ssbeDqxD2mZrMdJYAXF7GyQyhS5xDXuWC5
+
+# Capital — 30% of total allocation
+# Test: 1.0 SOL (~$150 at $150/SOL) | Full: ~6.9 SOL (~$1,035)
+total_amount_quote: '1.0'
+side: 0  # 0=BOTH (operator holds SOL + PUMP)
+
+# Range — ±8% total width (16.0%)
+# Safety net: always in range when narrow position rebalances
+# Covers 30d price spread (25.9%) with significant buffer
+# Expected ~2-4 rebalances/month
+position_width_pct: '16.0'
+position_offset_pct: '0.5'  # larger buffer for wider range TX timing
+
+# Rebalance timing — conservative (wide range rarely exits)
+rebalance_seconds: 900          # 15 min out-of-range before rebalancing
+rebalance_threshold_pct: '1.0'  # price must be 1.0% beyond bounds before timer starts
+
+# Price limits — wider bracket to match the safety-net role
+# Current price: ~48,264 | Monthly range: 40,852–51,429 PUMP/SOL
+buy_price_min:  '32000'  # -22% below ATL — hard floor, stop buying if PUMP crashes
+buy_price_max:  '55000'  # +7% above ATH — anchor for BUY positions (KEEP logic)
+sell_price_min: '38000'  # -7% below ATL — anchor for SELL positions (KEEP logic)
+sell_price_max: '65000'  # +26% above ATH — stop selling if PUMP spikes hard

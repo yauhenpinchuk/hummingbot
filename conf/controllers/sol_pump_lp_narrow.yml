@@ -1,0 +1,32 @@
+id: sol_pump_lp_narrow
+controller_name: lp_rebalancer
+controller_type: generic
+
+# Connection
+connector_name: raydium/clmm
+network: mainnet-beta
+trading_pair: SOL-PUMP
+pool_address: 45ssPkUQs1ssbeDqxD2mZrMdJYAXF7GyQyhS5xDXuWC5
+
+# Capital — 70% of total allocation
+# Test: 2.3 SOL (~$345 at $150/SOL) | Full: ~16.1 SOL (~$2,415)
+total_amount_quote: '2.3'
+side: 0  # 0=BOTH (operator holds SOL + PUMP)
+
+# Range — ±2% total width (4.0%)
+# High concentration: ~5x vs pool average
+# Typical daily price move (4.1%) will trigger rebalance ~1x/day
+# Fee yield: ~2.5x vs unmanaged pool share
+position_width_pct: '4.0'
+position_offset_pct: '0.3'  # safety buffer during TX submission
+
+# Rebalance timing — aggressive (captures fees quickly after rebalance)
+rebalance_seconds: 300          # 5 min out-of-range before rebalancing
+rebalance_threshold_pct: '0.5'  # price must be 0.5% beyond bounds before timer starts
+
+# Price limits — tighter bracket (monthly range 40,852–51,429 PUMP/SOL)
+# Current price: ~48,264
+buy_price_min:  '38000'  # -7% below ATL — stop buying SOL if PUMP collapses
+buy_price_max:  '51500'  # just above ATH — anchor for BUY positions (KEEP logic)
+sell_price_min: '44000'  # above ATL with buffer — anchor for SELL positions (KEEP logic)
+sell_price_max: '56000'  # +9% above ATH — stop selling if PUMP moons

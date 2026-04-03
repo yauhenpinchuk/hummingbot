@@ -1,0 +1,124 @@
+name: Build and Deploy — SOL-PUMP Bot
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write  # Required to push images to GitHub Container Registry
+
+jobs:
+  # ─── Gate 1: Secret Scan ────────────────────────────────────────────────────
+  scan-secrets:
+    name: Scan for secrets
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history required for TruffleHog
+
+      - name: TruffleHog secret scan
+        uses: trufflesecurity/trufflehog@main
+        with:
+          path: ./
+          base: ""
+          head: HEAD
+          extra_args: --only-verified
+
+  # ─── Gate 2: Build & Push ───────────────────────────────────────────────────
+  # Builds hummingbot and gateway images, pushes both to GHCR.
+  build-and-push:
+    name: Build and push images
+    runs-on: ubuntu-latest
+    needs: [scan-secrets]
+
+    steps:
+      - name: Checkout hummingbot
+        uses: actions/checkout@v4
+
+      - name: Checkout gateway
+        uses: actions/checkout@v4
+        with:
+          repository: yauhenpinchuk/gateway
+          path: gateway-src
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push hummingbot image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: Dockerfile
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/sol-pump-hummingbot:latest
+            ghcr.io/${{ github.repository_owner }}/sol-pump-hummingbot:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build and push gateway image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./gateway-src
+          file: ./gateway-src/Dockerfile
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/sol-pump-gateway:latest
+            ghcr.io/${{ github.repository_owner }}/sol-pump-gateway:${{ github.sha }}
+          cache-from: type=gha,scope=gateway
+          cache-to: type=gha,scope=gateway,mode=max
+
+  # ─── Gate 3: Deploy ─────────────────────────────────────────────────────────
+  # SSHes to the server, pulls new images, restarts containers.
+  deploy:
+    name: Deploy to server
+    runs-on: ubuntu-latest
+    needs: [build-and-push]
+
+    steps:
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          script: |
+            set -e
+            cd /opt/sol-pump-bot/hummingbot
+
+            # Sync latest config files (controller YAMLs, script config, compose file)
+            git pull
+
+            # Authenticate with GHCR to pull private images
+            echo "${{ secrets.GHCR_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+
+            # Pull the latest images
+            docker compose -f docker-compose.prod.yml --env-file ../.secrets/env pull
+
+            # Restart services (only changed containers restart)
+            docker compose -f docker-compose.prod.yml --env-file ../.secrets/env up -d
+
+            # Wait for gateway health check to settle
+            sleep 30
+
+            # Print status
+            docker compose -f docker-compose.prod.yml --env-file ../.secrets/env ps
+
+            # Fail if gateway is not healthy
+            if docker compose -f docker-compose.prod.yml --env-file ../.secrets/env ps | grep sol_pump_gateway | grep -qv "(healthy)"; then
+              echo "ERROR: gateway is not healthy after deploy"
+              docker compose -f docker-compose.prod.yml --env-file ../.secrets/env logs --tail 50
+              exit 1
+            fi
+
+            echo "Deploy complete — all services healthy"
