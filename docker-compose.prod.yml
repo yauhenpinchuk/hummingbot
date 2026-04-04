@@ -22,6 +22,12 @@
 # Deploy command (runs automatically via GitHub Actions on push to master):
 #   docker compose -f docker-compose.prod.yml --env-file ../.secrets/env pull
 #   docker compose -f docker-compose.prod.yml --env-file ../.secrets/env up -d
+#
+# PostgreSQL (crypto-analytics, same host):
+#   Hummingbot uses conf/conf_client.yml → db_mode (SQLAlchemy). With network_mode: host, Postgres must be
+#   reachable at 127.0.0.1:5432 — matches crypto-analytics docker-compose.prod.yml service `db`
+#   (127.0.0.1:5432:5432, database crypto_analytics). Align db_username / db_password / db_name in conf_client.yml
+#   on the server with POSTGRES_USER / POSTGRES_PASSWORD / POSTGRES_DB from the crypto-analytics secrets.
 
 services:
   # ─── Gateway ────────────────────────────────────────────────────────────────
