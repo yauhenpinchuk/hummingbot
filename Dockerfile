@@ -32,6 +32,9 @@ COPY setup/pip_packages.txt /tmp/pip_packages.txt
 RUN python3 -m pip install --no-deps -r /tmp/pip_packages.txt && \
     rm /tmp/pip_packages.txt
 
+# PostgreSQL driver for hummingbot db_mode: postgresql
+RUN conda install -y psycopg2
+
 
 RUN python3 setup.py build_ext --inplace -j 8 && \
     rm -rf build/ && \
