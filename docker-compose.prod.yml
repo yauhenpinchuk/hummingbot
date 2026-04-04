@@ -17,9 +17,7 @@
 #   cp hummingbot/.env.example /opt/sol-pump-bot/.secrets/env
 #   chmod 600 /opt/sol-pump-bot/.secrets/env
 #   nano /opt/sol-pump-bot/.secrets/env   ← fill in real passwords
-#   # Copy encrypted connector creds and certs from local machine:
-#   rsync -av conf/connectors/ server:/opt/sol-pump-bot/hummingbot/conf/connectors/
-#   rsync -av certs/           server:/opt/sol-pump-bot/hummingbot/certs/
+#   Then trigger the "Setup wallet" workflow_dispatch in GitHub Actions.
 #
 # Deploy command (runs automatically via GitHub Actions on push to master):
 #   docker compose -f docker-compose.prod.yml --env-file ../.secrets/env pull
@@ -34,12 +32,11 @@ services:
     ports:
       - "127.0.0.1:15888:15888"   # localhost only — not publicly exposed
     volumes:
-      - ./certs:/home/gateway/certs           # TLS certs shared with hummingbot
-      - ./gateway-conf:/home/gateway/conf     # wallets, chains, tokens (set up once)
+      - ./gateway-conf:/home/gateway/conf     # wallets added via setup-wallet workflow
       - gateway_logs:/home/gateway/logs
     environment:
       - GATEWAY_PASSPHRASE=${GATEWAY_PASSPHRASE}
-      - DEV=false
+      - DEV=true   # HTTP mode — gateway bound to 127.0.0.1 only, TLS not needed
     logging:
       driver: json-file
       options:
@@ -47,7 +44,7 @@ services:
         max-file: "5"
     healthcheck:
       test: ["CMD", "node", "-e",
-        "require('http').get('http://localhost:15888/', r => process.exit(r.statusCode < 500 ? 0 : 1)).on('error', () => process.exit(1))"]
+        "require('http').get('http://localhost:15888/connectors', r => process.exit(r.statusCode < 500 ? 0 : 1)).on('error', () => process.exit(1))"]
       interval: 30s
       timeout: 10s
       start_period: 30s
@@ -70,7 +67,6 @@ services:
       - ./conf/scripts:/home/hummingbot/conf/scripts
       - ./scripts:/home/hummingbot/scripts
       - ./controllers:/home/hummingbot/controllers
-      - ./certs:/home/hummingbot/certs        # same certs dir as gateway
       - hummingbot_logs:/home/hummingbot/logs
       - hummingbot_data:/home/hummingbot/data
     environment:
@@ -89,3 +85,4 @@ volumes:
   gateway_logs:
   hummingbot_logs:
   hummingbot_data:
+  gateway_conf:
