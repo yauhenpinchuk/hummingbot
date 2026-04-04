@@ -96,8 +96,10 @@ jobs:
             set -e
             cd /opt/sol-pump-bot/hummingbot
 
-            # Sync latest config files (controller YAMLs, script config, compose file)
-            git pull
+            # Match remote exactly (avoids git pull failing on server-side edits, e.g. hotfixes)
+            git fetch origin
+            git checkout master
+            git reset --hard origin/master
 
             # Authenticate with GHCR to pull private images
             echo "${{ secrets.GHCR_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
