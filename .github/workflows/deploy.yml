@@ -23,9 +23,9 @@ jobs:
         uses: trufflesecurity/trufflehog@main
         with:
           path: ./
-          base: ""
+          base: ${{ github.event.before || github.sha }}
           head: HEAD
-          extra_args: --only-verified --exclude-paths=.trufflehog-exclude
+          extra_args: --only-verified
 
   # ─── Gate 2: Build & Push ───────────────────────────────────────────────────
   # Builds hummingbot and gateway images, pushes both to GHCR.
