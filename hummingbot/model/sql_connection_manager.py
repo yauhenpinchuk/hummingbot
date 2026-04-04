@@ -22,6 +22,13 @@ class SQLConnectionType(Enum):
     TRADE_FILLS = 1
 
 
+def _normalize_fk_constraint_name(fkc):
+    """SQLAlchemy 2.x may return (table_name, constraint_name) tuples from get_sorted_table_and_fkc_names."""
+    if isinstance(fkc, tuple):
+        return fkc[1] if len(fkc) > 1 else fkc[0]
+    return fkc
+
+
 class SQLConnectionManager(TransactionBase):
     _scm_logger: Optional[HummingbotLogger] = None
     _scm_trade_fills_instance: Optional["SQLConnectionManager"] = None
@@ -87,7 +94,8 @@ class SQLConnectionManager(TransactionBase):
                         if not self._engine.dialect.supports_alter:
                             continue
                         for fkc in fkcs:
-                            fk_constraint = ForeignKeyConstraint((), (), name=fkc)
+                            fk_name = _normalize_fk_constraint_name(fkc)
+                            fk_constraint = ForeignKeyConstraint((), (), name=fk_name)
                             Table(tname, MetaData(), fk_constraint)
                             conn.execute(DropConstraint(fk_constraint))
 
