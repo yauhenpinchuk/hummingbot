@@ -73,6 +73,7 @@ services:
       - CONFIG_PASSWORD=${CONFIG_PASSWORD}
       - CONFIG_FILE_NAME=v2_with_controllers.py
       - SCRIPT_CONFIG=sol_pump_lp.yml
+      - HEADLESS_MODE=true
     tty: true
     stdin_open: true
     logging:
