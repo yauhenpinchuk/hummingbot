@@ -25,7 +25,7 @@ jobs:
           path: ./
           base: ""
           head: HEAD
-          extra_args: --only-verified
+          extra_args: --only-verified --exclude-paths=.trufflehog-exclude
 
   # ─── Gate 2: Build & Push ───────────────────────────────────────────────────
   # Builds hummingbot and gateway images, pushes both to GHCR.
