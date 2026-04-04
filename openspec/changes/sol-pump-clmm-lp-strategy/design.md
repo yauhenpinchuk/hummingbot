@@ -13,10 +13,11 @@ The operator's edge: **both tokens (SOL and PUMP) are acceptable long-term holds
 
 **Goals:**
 
-- Automate LP rebalancing on the SOL-PUMP Raydium CLMM pool using `LPRebalancer` as-is — no new controller code
-- Fixed ±3% range (`position_width_pct: 6.0`) selected from pool data analysis
+- Automate LP rebalancing on the SOL-PUMP Raydium CLMM pool using two `LPRebalancer` controllers (narrow + wide) — no new controller code
+- Dual-range strategy: narrow ±2% (70% capital, high fee density) + wide ±8% (30% capital, safety net)
 - Fee auto-compounding via existing `_last_closed_`* rollover (built into `LPRebalancer`)
-- Deploy $3,000–$4,000 with `side=0` (BOTH), centered on current price
+- Deploy ~$24 test / ~$1,320 full; `side=0` (BOTH), centered on current price
+- Safe restart: `LPExecutor` adopts existing on-chain positions on redeploy — no duplicate positions opened
 
 **Non-Goals:**
 
@@ -24,7 +25,6 @@ The operator's edge: **both tokens (SOL and PUMP) are acceptable long-term holds
 - Volatility-adaptive range width — no Raydium candle feed available; dropped for v1
 - Asymmetric range skew — dropped for v1
 - Momentum filter — dropped for v1 (no candle data source for WSOL-PUMP)
-- Multi-position staggered ranges — future work
 - Gateway changes — `raydium/clmm` is production-ready as-is
 
 ## Decisions
@@ -37,44 +37,62 @@ All the adaptive filter ideas (D2–D4 in the original design) required either a
 
 **Future path**: if adaptive width is desired later, the right data source is a rolling price buffer from `executor.custom_info["current_price"]` downsampled to 1-min buckets — but this is a separate change.
 
-### D2: Fixed range width of ±3% (`position_width_pct: 6.0`)
+### D2: Dual-range strategy — narrow ±2% + wide ±8%
 
-Derived from actual pool data:
+Single ±3% range was rejected: during a PUMP spike (10–20%/hr), the position goes OOR and earns zero fees while the rebalance is pending. A wide safety-net position fills this gap.
 
-- 24h observed spread: 3.1% → a ±3% range (total 6%) contains a full normal day with zero rebalances
-- Monthly spread: 25.9% → wider ranges don't meaningfully reduce rebalances, they just reduce fee density
+| | Narrow | Wide |
+|---|---|---|
+| `position_width_pct` | 4.0 (±2%) | 16.0 (±8%) |
+| Capital share | 70% | 30% |
+| Fee density | ~5–6× pool avg | ~1.5× pool avg |
+| Expected rebalances | ~1/day | ~2–4/month |
+| Role | Primary fee earner | Safety net during rebalance gap |
 
-Fee density estimate at $3,500 capital:
+Wide position ensures at least 30% of capital earns fees even when narrow goes OOR and is rebalancing.
 
+### D3: Rebalance timing — 5 min (narrow) / 15 min (wide)
+
+- **Narrow**: `rebalance_seconds=300`, `rebalance_threshold_pct=0.5` — 5 min is enough to distinguish a wick from a trend; shorter than original 300s design confirmed adequate
+- **Wide**: `rebalance_seconds=900`, `rebalance_threshold_pct=1.0` — wide range rarely exits, conservative timer avoids unnecessary gas on minor excursions
+
+### D4: Price limits — tighter for narrow, wider for wide
+
+Monthly range: 40,852–51,429 PUMP/SOL, current ~48,264.
+
+**Narrow** (tighter bracket — stop chasing early):
 ```
-Daily pool fees:          $154/day  (154,001 volume × 0.1%)
-Your share (broad):       $3.05/day (1.98% of $173k TVL)
-Concentration at ±3%:     ~4× multiplier → ~$12/day
-Annual (conservative 50% in-range): ~$2,200/yr on $3,500 → ~63% APY
-```
-
-**±2% rejected**: highest fee density but PUMP spikes can be 10–20%/hour — too many rebalances during high-volume moments, which is exactly when fees are highest. Missing those minutes is costly.
-
-**±5% rejected**: lower fee density, saves only trivial gas (Solana rebalance ≈ $0.15), not worth the trade-off.
-
-### D3: Rebalance timing — 3 min wait, 0.5% threshold
-
-`rebalance_seconds: 180` — shorter than the original 300s design. Reasoning: on a real pump, 3 min is enough to distinguish a wick from a trend. Waiting 5 min means more time fully OOR and earning zero fees.
-
-`rebalance_threshold_pct: 0.5` — price must be 0.5% beyond the range boundary before the timer starts. Prevents the timer firing on noise at the range edge.
-
-### D4: Price limits anchor at monthly range boundary
-
-```
-Pool monthly range: 40,852 – 51,428 PUMP/SOL
-
-buy_price_min:   40,000   # stop buying SOL if PUMP collapses
-buy_price_max:   50,000   # anchor BUY positions near monthly high
-sell_price_min:  45,000   # anchor SELL positions near monthly low
-sell_price_max:  56,000   # stop selling if PUMP moons hard
+buy_price_min:  38,000   # -7% below ATL
+buy_price_max:  51,500   # just above ATH — anchor for BUY (KEEP)
+sell_price_min: 44,000   # above ATL with buffer — anchor for SELL (KEEP)
+sell_price_max: 56,000   # +9% above ATH
 ```
 
-KEEP logic: once a BUY position is anchored at `buy_price_max` (50,000), no further upward rebalancing — the position is optimally placed to catch any pullback into range. Same logic on the downside with `sell_price_min`.
+**Wide** (wider bracket — safety net should rarely hit limits):
+```
+buy_price_min:  32,000   # -22% below ATL — hard floor
+buy_price_max:  55,000   # +7% above ATH — anchor for BUY (KEEP)
+sell_price_min: 38,000   # -7% below ATL — anchor for SELL (KEEP)
+sell_price_max: 65,000   # +26% above ATH
+```
+
+KEEP logic: once a BUY position is anchored at `buy_price_max`, no further upward rebalancing — position is optimally placed to catch pullback. Same logic on downside with `sell_price_min`.
+
+### D6: Position adoption on restart — rank-based width matching
+
+**Problem**: `LPExecutor` is a pure in-memory state machine. On restart, `active_executors` is empty; the controller creates new executors which open new positions on-chain, duplicating existing ones.
+
+**Solution**: `LPExecutor.on_start()` calls `connector.get_user_positions(pool_address)` and adopts any existing position instead of creating a new one.
+
+**Multi-position matching** (two controllers, same pool): positions are sorted by relative width `(upper-lower)/lower`. Each executor picks the position at the same rank as its own `config_width`. This is robust to any absolute width change — only the ordering (narrow < wide) must be preserved.
+
+```
+on-chain sorted by width:  [pos_A: 4%,  pos_B: 16%]
+narrow executor config_width=4%  → rank=0 → pos_A ✓
+wide   executor config_width=16% → rank=1 → pos_B ✓
+```
+
+⚠️ PnL tracking caveat: `initial_base_amount` / `initial_quote_amount` are set to current on-chain amounts (original deposit amounts are unknown after restart). PnL from the previous session is not carried over.
 
 ### D5: Fee auto-compounding — no additional mechanism needed
 

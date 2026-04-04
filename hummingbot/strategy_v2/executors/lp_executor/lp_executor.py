@@ -59,8 +59,77 @@ class LPExecutor(ExecutorBase):
         self._last_attempted_signature: Optional[str] = None  # Track for retry logging
 
     async def on_start(self):
-        """Start executor - will create position in first control_task"""
+        """Start executor - adopt existing on-chain position if found, else create new one."""
         await super().on_start()
+        await self._adopt_existing_position_if_any()
+
+    async def _adopt_existing_position_if_any(self):
+        """
+        Check the pool for an existing position belonging to this wallet and adopt it
+        so the executor monitors it instead of opening a new one.
+
+        When multiple positions exist in the same pool (e.g. narrow + wide ranges),
+        we pick the one whose relative width is closest to this executor's configured
+        bounds.  The configured bounds encode the intended width even though the
+        absolute prices differ from the on-chain position (they were computed from the
+        price at executor-creation time, not from the original deposit price).
+
+        Called once at startup, before the first control_task tick.
+        """
+        connector = self.connectors.get(self.config.connector_name)
+        if connector is None:
+            return
+
+        try:
+            positions = await connector.get_user_positions(pool_address=self.config.pool_address)
+        except Exception as e:
+            self.logger().warning(f"Could not fetch existing positions on startup: {e}")
+            return
+
+        if not positions:
+            return
+
+        def position_width(pos) -> Decimal:
+            lo = Decimal(str(pos.lower_price))
+            hi = Decimal(str(pos.upper_price))
+            return (hi - lo) / lo if lo else Decimal("0")
+
+        # Match by rank: sort on-chain positions by width ascending, then pick the
+        # one at the same rank as this executor's config width sits among them.
+        # narrow executor (small config_width) → narrowest on-chain position
+        # wide executor   (large config_width) → widest  on-chain position
+        # This is robust to any absolute width values — only relative order matters.
+        config_lower = self.config.lower_price
+        config_upper = self.config.upper_price
+        config_width = (config_upper - config_lower) / config_lower if config_lower else Decimal("0")
+
+        sorted_positions = sorted(positions, key=position_width)
+        # rank = number of on-chain positions narrower than our config width
+        rank = sum(1 for p in sorted_positions if position_width(p) < config_width)
+        rank = min(rank, len(sorted_positions) - 1)
+        pos = sorted_positions[rank]
+
+        self.logger().info(
+            f"Adopting existing position {pos.address} "
+            f"[{pos.lower_price:.6f} – {pos.upper_price:.6f}] "
+            f"(on-chain width={float(position_width(pos)):.3%}, "
+            f"config width={float(config_width):.3%}, rank={rank}/{len(positions)}) "
+            f"from pool {self.config.pool_address}"
+        )
+
+        self.lp_position_state.position_address = pos.address
+        self.lp_position_state.lower_price = Decimal(str(pos.lower_price))
+        self.lp_position_state.upper_price = Decimal(str(pos.upper_price))
+        self.lp_position_state.base_amount = Decimal(str(pos.base_token_amount))
+        self.lp_position_state.quote_amount = Decimal(str(pos.quote_token_amount))
+        self.lp_position_state.base_fee = Decimal(str(pos.base_fee_amount))
+        self.lp_position_state.quote_fee = Decimal(str(pos.quote_fee_amount))
+        # Best-effort initial amounts (original deposit amounts unknown after restart)
+        self.lp_position_state.initial_base_amount = Decimal(str(pos.base_token_amount))
+        self.lp_position_state.initial_quote_amount = Decimal(str(pos.quote_token_amount))
+        self.lp_position_state.add_mid_price = Decimal(str(pos.price))
+        # State will be set by update_state() on the first control_task tick
+        # (IN_RANGE or OUT_OF_RANGE depending on current price)
 
     async def control_task(self):
         """Main control loop - simple state machine with direct await operations"""

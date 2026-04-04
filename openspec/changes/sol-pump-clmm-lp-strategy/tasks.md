@@ -8,10 +8,15 @@
 
 ## 2. Config
 
-- [x] 2.1 Create `conf/sol_pump_lp.yml` with: `connector_name=raydium/clmm`, confirmed `trading_pair`, `pool_address`, `side=0` (BOTH), `position_width_pct=8.0`, `rebalance_seconds=600`, `rebalance_threshold_pct=0.5`, `position_offset_pct=0.3`, price limits `buy_price_min=36000`, `buy_price_max=51500`, `sell_price_min=44000`, `sell_price_max=58000`
-      Created: `conf/controllers/sol_pump_lp_controller.yml` (controller config) + `conf/scripts/sol_pump_lp.yml` (script config)
-      ⚠️ Pitfall: position_width_pct changed from 6.0→8.0 (±4%) after analysis — 24h pool spread is 4.1%, ±3% was too tight.
-- [x] 2.2 Set `total_amount_quote` to SOL value of the test allocation (start with ~3.3 SOL ≈ $500)
+- [x] 2.1 Create dual-controller config: `conf/scripts/sol_pump_lp.yml` referencing both `sol_pump_lp_narrow.yml` and `sol_pump_lp_wide.yml`
+      - `sol_pump_lp_narrow.yml`: `position_width_pct=4.0`, `rebalance_seconds=300`, `rebalance_threshold_pct=0.5`, `position_offset_pct=0.3`, `total_amount_quote=10000` (test) / ~560000 (full, 70%)
+      - `sol_pump_lp_wide.yml`:   `position_width_pct=16.0`, `rebalance_seconds=900`, `rebalance_threshold_pct=1.0`, `position_offset_pct=0.5`, `total_amount_quote=4500` (test) / ~240000 (full, 30%)
+      ⚠️ Pitfall: both controllers share the same `pool_address` — position adoption on restart must use rank-based matching (see task 2.3)
+- [x] 2.2 Set `total_amount_quote` to test allocation (narrow=10000 PUMP ~$16.5, wide=4500 PUMP ~$7.5)
+- [x] 2.3 Fix `LPExecutor.on_start()` to adopt existing on-chain positions on restart
+      Implemented `_adopt_existing_position_if_any()` in `hummingbot/strategy_v2/executors/lp_executor/lp_executor.py`
+      Uses `connector.get_user_positions(pool_address=...)` and rank-based width matching: sort positions by width, pick the one at the same rank as this executor's `config_width = (upper-lower)/lower`
+      ⚠️ Pitfall: `min(abs(width - config_width))` matching breaks when config widths are updated — rank-based matching is robust to any value change as long as narrow_config < wide_onchain
 
 ## 3. Deploy and Validate
 
