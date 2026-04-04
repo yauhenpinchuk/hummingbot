@@ -14,20 +14,21 @@ pool_address: 45ssPkUQs1ssbeDqxD2mZrMdJYAXF7GyQyhS5xDXuWC5
 total_amount_quote: '10000'
 side: 0  # 0=BOTH (operator holds SOL + PUMP)
 
-# Range — ±2% total width (4.0%)
-# High concentration: ~5x vs pool average
-# Typical daily price move (4.1%) will trigger rebalance ~1x/day
-# Fee yield: ~2.5x vs unmanaged pool share
-position_width_pct: '4.0'
-position_offset_pct: '0.3'  # safety buffer during TX submission
+# Range — ±2.75% total width (5.5%)
+# Calibrated to stable regime (Oct 2025–Apr 2026): avg daily move ~3.1%, median monthly ~25%
+# Backtest (Jan–Apr 2026): 50% in-range, ~40 rebalances/3mo
+# Net effective concentration: 36.9x × 50% = 18.5x (vs 4% range: 50.5x × 40% = 20.2x)
+# In volatile months (Jan 2026, 47% range): proposed earns +34% more fees than 4% range
+position_width_pct: '5.5'
+position_offset_pct: '0.4'  # safety buffer during TX submission (slightly wider than 4% range)
 
 # Rebalance timing — aggressive (captures fees quickly after rebalance)
 rebalance_seconds: 300          # 5 min out-of-range before rebalancing
 rebalance_threshold_pct: '0.5'  # price must be 0.5% beyond bounds before timer starts
 
-# Price limits — tighter bracket (monthly range 40,852–51,429 PUMP/SOL)
-# Current price: ~48,264
-buy_price_min:  '38000'  # -7% below ATL — stop buying SOL if PUMP collapses
-buy_price_max:  '51500'  # just above ATH — anchor for BUY positions (KEEP logic)
-sell_price_min: '44000'  # above ATL with buffer — anchor for SELL positions (KEEP logic)
-sell_price_max: '56000'  # +9% above ATH — stop selling if PUMP moons
+# Price limits — calibrated to Oct 2025–Apr 2026 percentile distribution
+# Current price: ~48,481 PUMP/SOL | p50=46,869 | p80=57,022 | p95=67,613
+buy_price_min:  '38000'  # p10 — stop buying SOL if PUMP collapses
+buy_price_max:  '60000'  # p80 — KEEP anchor; fires only if price rallies ~24% from current
+sell_price_min: '44000'  # above p25 with buffer — KEEP anchor for SELL positions
+sell_price_max: '68000'  # p95 — stop selling if PUMP spikes hard

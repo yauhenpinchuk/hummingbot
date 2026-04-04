@@ -14,20 +14,21 @@ pool_address: 45ssPkUQs1ssbeDqxD2mZrMdJYAXF7GyQyhS5xDXuWC5
 total_amount_quote: '4500'
 side: 0  # 0=BOTH (operator holds SOL + PUMP)
 
-# Range — ±8% total width (16.0%)
-# Safety net: always in range when narrow position rebalances
-# Covers 30d price spread (25.9%) with significant buffer
-# Expected ~2-4 rebalances/month
-position_width_pct: '16.0'
+# Range — ±13% total width (26.0%)
+# Calibrated to stable regime (Oct 2025–Apr 2026): median monthly range ~25%
+# Backtest (Jan–Apr 2026): 94% in-range, ~5 rebalances/3mo (~1.7/month)
+# Jan 2026 (47% range month): 84% in-range — genuine safety net for narrow rebalances
+# Concentration: 8.2x (lower than narrow by design — safety net, not fee maximiser)
+position_width_pct: '26.0'
 position_offset_pct: '0.5'  # larger buffer for wider range TX timing
 
-# Rebalance timing — conservative (wide range rarely exits)
-rebalance_seconds: 900          # 15 min out-of-range before rebalancing
-rebalance_threshold_pct: '1.0'  # price must be 1.0% beyond bounds before timer starts
+# Rebalance timing — conservative (wide range exits only on significant regime shifts)
+rebalance_seconds: 1800         # 30 min out-of-range before rebalancing
+rebalance_threshold_pct: '1.5'  # price must be 1.5% beyond bounds before timer starts
 
-# Price limits — wider bracket to match the safety-net role
-# Current price: ~48,264 | Monthly range: 40,852–51,429 PUMP/SOL
-buy_price_min:  '32000'  # -22% below ATL — hard floor, stop buying if PUMP crashes
-buy_price_max:  '55000'  # +7% above ATH — anchor for BUY positions (KEEP logic)
-sell_price_min: '38000'  # -7% below ATL — anchor for SELL positions (KEEP logic)
-sell_price_max: '65000'  # +26% above ATH — stop selling if PUMP spikes hard
+# Price limits — calibrated to Oct 2025–Apr 2026 percentile distribution
+# Current price: ~48,481 PUMP/SOL | p95=67,613 | p99=71,545 | ATH=74,845
+buy_price_min:  '32000'  # p3 — hard floor, stop buying if PUMP crashes severely
+buy_price_max:  '70000'  # p95–p99 range — KEEP anchor for BUY positions
+sell_price_min: '38000'  # p10 — KEEP anchor for SELL positions
+sell_price_max: '76000'  # ATH + ~2% buffer — stop selling if PUMP spikes to ATH
