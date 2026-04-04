@@ -9,8 +9,8 @@ trading_pair: SOL-PUMP
 pool_address: 45ssPkUQs1ssbeDqxD2mZrMdJYAXF7GyQyhS5xDXuWC5
 
 # Capital — 70% of total allocation
-# Test: 2.3 SOL (~$345 at $150/SOL) | Full: ~16.1 SOL (~$2,415)
-total_amount_quote: '2.3'
+# Test: 0.35 SOL (~$52 at $150/SOL) | Full: ~16.1 SOL (~$2,415)
+total_amount_quote: '0.35'
 side: 0  # 0=BOTH (operator holds SOL + PUMP)
 
 # Range — ±2% total width (4.0%)
