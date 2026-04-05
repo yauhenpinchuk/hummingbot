@@ -5,6 +5,7 @@ name: hummingbot
 services:
   gateway:
     profiles: [gateway]
+    # Official Gateway image from Docker Hub (this repo does not build it). Not the same as local core image below.
     image: hummingbot/gateway:latest
     container_name: hummingbot_gateway
     pull_policy: missing
@@ -19,7 +20,8 @@ services:
 
   hummingbot:
     container_name: hummingbot_core
-    image: hummingbot/hummingbot:local
+    # Local build only — avoids clashing with Docker Hub `hummingbot/hummingbot:*`
+    image: local/hummingbot:latest
     build:
       context: .
       dockerfile: Dockerfile

@@ -30,7 +30,7 @@ development-diff-cover:
 	diff-cover --compare-branch=origin/development coverage.xml
 
 build:
-	git clean -xdf && make clean && docker build -t hummingbot/hummingbot${TAG} -f Dockerfile .
+	git clean -xdf && make clean && docker build -t local/hummingbot:latest -f Dockerfile .
 
 
 uninstall:
