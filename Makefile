@@ -1,5 +1,5 @@
 .ONESHELL:
-.PHONY: test run run_coverage report_coverage development-diff-cover uninstall build install setup deploy down
+.PHONY: test run run_coverage report_coverage development-diff-cover uninstall build build-gateway install setup deploy down
 
 DYDX ?= 0
 ENV_FILE := setup/environment.yml
@@ -66,6 +66,7 @@ run:
 	conda run -n hummingbot --no-capture-output ./bin/hummingbot_quickstart.py $(ARGS)
 
 setup:
+	@mkdir -p gateway-conf logs data certs
 	@read -r -p "Include Gateway? [y/N] " ans; \
 	if [ "$$ans" = "y" ] || [ "$$ans" = "Y" ]; then \
 		echo "COMPOSE_PROFILES=gateway" > .compose.env; \
@@ -77,7 +78,17 @@ setup:
 
 deploy:
 	@set -a; . ./.compose.env 2>/dev/null || true; set +a; \
-	docker compose up -d
+	docker compose up -d --build
+
+# Build Gateway image from a sibling ../gateway checkout (optional; otherwise compose pulls hummingbot/gateway:latest)
+build-gateway:
+	@if [ -f ../gateway/Dockerfile ]; then \
+		docker build -t hummingbot/gateway:latest ../gateway; \
+	else \
+		echo "No ../gateway/Dockerfile — run from crypto monorepo or: docker pull hummingbot/gateway:latest"; \
+		exit 1; \
+	fi
 
 down:
-	docker compose --profile gateway down
+	@set -a; . ./.compose.env 2>/dev/null || true; set +a; \
+	docker compose down --remove-orphans

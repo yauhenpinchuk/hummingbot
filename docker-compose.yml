@@ -1,10 +1,28 @@
+# Local stack. Optional Gateway: run `make setup` and choose "y", then `make deploy`.
+# Gateway listens on 127.0.0.1:15888; Hummingbot uses host network and reaches it via localhost.
+name: hummingbot
+
 services:
+  gateway:
+    profiles: [gateway]
+    image: hummingbot/gateway:latest
+    container_name: hummingbot-gateway-local
+    pull_policy: missing
+    ports:
+      - "127.0.0.1:15888:15888"
+    volumes:
+      - ./gateway-conf:/home/gateway/conf
+      - gateway_logs:/home/gateway/logs
+    environment:
+      - DEV=true
+      - GATEWAY_PASSPHRASE=${GATEWAY_PASSPHRASE:-admin}
+
   hummingbot:
     container_name: hummingbot
-    #image: hummingbot/hummingbot:latest
-    build: # Uncomment this build section and comment image to build Hummingbot locally
-       context: .
-       dockerfile: Dockerfile
+    image: hummingbot/hummingbot:local
+    build:
+      context: .
+      dockerfile: Dockerfile
     volumes:
       - ./conf:/home/hummingbot/conf
       - ./conf/connectors:/home/hummingbot/conf/connectors
@@ -28,3 +46,6 @@ services:
   #    - CONFIG_PASSWORD=admin
   #    - CONFIG_FILE_NAME=v2_with_controllers.py
   #    - SCRIPT_CONFIG=conf_v2_with_controllers.yml
+
+volumes:
+  gateway_logs: {}

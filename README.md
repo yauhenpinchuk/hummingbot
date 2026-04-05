@@ -75,6 +75,10 @@ make deploy
 docker attach hummingbot
 ```
 
+The compose file defines Gateway with `profile: gateway` and pulls `hummingbot/gateway:latest`. To build the image from a sibling checkout instead (`../gateway`), run `make build-gateway` once, then `make deploy`.
+
+Optional: create a `.env` in the repo root with `GATEWAY_PASSPHRASE=...` (default is `admin` for local dev).
+
 By default, Gateway will start in development mode with unencrypted HTTP endpoints. To run in production model with encrypted HTTPS, use the `DEV=false` flag and run `gateway generate-certs` in Hummingbot to generate the certificates needed. See [Development vs Production Modes](http://hummingbot.org/gateway/installation/#development-vs-production-modes) for more information.
 
 ---
