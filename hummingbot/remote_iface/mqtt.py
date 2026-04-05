@@ -50,6 +50,18 @@ from hummingbot.remote_iface.messages import (
 mqtts_logger: HummingbotLogger = None
 
 
+def _mqtt_v2_conf_filename(conf: Optional[str]) -> Optional[str]:
+    """Resolve MQTT start `conf` to a filename under conf/scripts/ (e.g. sol_pump_lp -> sol_pump_lp.yml)."""
+    if conf is None:
+        return None
+    c = str(conf).strip()
+    if not c:
+        return None
+    if c.endswith((".yml", ".yaml")):
+        return c
+    return f"{c}.yml"
+
+
 class CommandTopicSpecs:
     START: str = '/start'
     STOP: str = '/stop'
@@ -146,23 +158,24 @@ class MQTTCommands:
         response = StartCommandMessage.Response()
         timeout = 30
         try:
-            if self._hb_app.strategy_name is None and msg.script is None:
-                raise Exception('Strategy check: Please import or create a strategy.')
-            if self._hb_app.strategy is not None:
+            v2_conf = _mqtt_v2_conf_filename(msg.conf)
+            if self._hb_app.strategy_name is None and msg.script is None and v2_conf is None:
+                raise Exception(
+                    'Strategy check: Please import or create a strategy, or pass conf (V2 script YAML).'
+                )
+            if self._hb_app.trading_core.strategy is not None:
                 raise Exception('The bot is already running - please run "stop" first')
             if msg.async_backend:
                 self._hb_app.start(
                     log_level=msg.log_level,
-                    script=msg.script,
-                    conf=msg.conf,
+                    v2_conf=v2_conf,
                     is_quickstart=msg.is_quickstart
                 )
             else:
                 res = call_sync(
                     self._hb_app.start_check(
                         log_level=msg.log_level,
-                        script=msg.script,
-                        conf=msg.conf,
+                        v2_conf=v2_conf,
                         is_quickstart=msg.is_quickstart
                     ),
                     loop=self._ev_loop,
@@ -278,7 +291,7 @@ class MQTTCommands:
         response = StatusCommandMessage.Response()
         timeout = 30  # seconds
         try:
-            if self._hb_app.strategy is None:
+            if self._hb_app.trading_core.strategy is None:
                 response.status = MQTT_STATUS_CODE.ERROR
                 response.msg = 'No strategy is currently running!'
                 return response
@@ -796,7 +809,7 @@ class MQTTGateway(Node):
             # self._rpc_clients = []
 
             self.start(False)
-            if self._hb_app.strategy is not None:
+            if self._hb_app.trading_core.strategy is not None:
                 self.start_market_events_fw()
 
             await asyncio.sleep(self._INTERVAL_RESTART_SHORT)
