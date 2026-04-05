@@ -6,7 +6,7 @@ services:
   gateway:
     profiles: [gateway]
     image: hummingbot/gateway:latest
-    container_name: hummingbot-gateway-local
+    container_name: hummingbot_gateway
     pull_policy: missing
     ports:
       - "127.0.0.1:15888:15888"
@@ -18,7 +18,7 @@ services:
       - GATEWAY_PASSPHRASE=${GATEWAY_PASSPHRASE:-admin}
 
   hummingbot:
-    container_name: hummingbot
+    container_name: hummingbot_core
     image: hummingbot/hummingbot:local
     build:
       context: .

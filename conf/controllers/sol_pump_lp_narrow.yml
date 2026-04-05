@@ -10,8 +10,8 @@ pool_address: 45ssPkUQs1ssbeDqxD2mZrMdJYAXF7GyQyhS5xDXuWC5
 
 # Capital — 70% of total allocation
 # total_amount_quote is in PUMP (quote token of SOL-PUMP pair)
-# Test: 10000 PUMP (~$16.5) | Full: ~560000 PUMP (~$924)
-total_amount_quote: '10000'
+# Test: 3430 PUMP + ~0.071 SOL (~0.10 SOL total across both controllers) | Full: ~560000 PUMP (~$924)
+total_amount_quote: '3430'
 side: 0  # 0=BOTH (operator holds SOL + PUMP)
 
 # Range — ±2.75% total width (5.5%)
