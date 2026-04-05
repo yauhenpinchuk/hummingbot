@@ -1,9 +1,16 @@
+# Pushes to master: build & push hummingbot-core + hummingbot-gateway images to GHCR (no SSH by default).
+# Legacy compose deploy: Actions → Run workflow → enable "Deploy legacy stack".
 name: Build and Deploy — Hummingbot + Gateway
 
 on:
   push:
     branches: [master]
   workflow_dispatch:
+    inputs:
+      deploy_legacy_stack:
+        description: "Deploy docker-compose.prod.yml on server (hummingbot + gateway). Uncheck for API-only servers."
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -78,10 +85,12 @@ jobs:
           cache-from: type=gha,scope=gateway
           cache-to: type=gha,scope=gateway,mode=max
 
-  # ─── Gate 3: Deploy ─────────────────────────────────────────────────────────
-  # SSHes to the server, pulls new images, restarts containers.
+  # ─── Gate 3: Legacy stack deploy (optional) ─────────────────────────────────
+  # API-only servers: use hummingbot-api deploy only; start Gateway + bots via HTTP API.
+  # Run this job manually from Actions with "Deploy legacy stack" enabled when needed.
   deploy:
-    name: Deploy to server
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.deploy_legacy_stack == 'true'
+    name: Deploy legacy stack (compose) to server
     runs-on: ubuntu-latest
     needs: [build-and-push]
 
