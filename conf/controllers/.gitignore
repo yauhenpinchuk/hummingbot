@@ -1,2 +1,2 @@
-# Allow sol-pump LP controller configs
+# Allow tracked LP controller configs (exceptions below)
 !sol_pump_lp*.yml

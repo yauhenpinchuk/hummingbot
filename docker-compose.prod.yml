@@ -1,25 +1,30 @@
-# Production Docker Compose — SOL-PUMP LP Bot
+# Production Docker Compose — Hummingbot + Gateway
 #
 # References pre-built images from GitHub Container Registry (GHCR).
 # Images are built by the GitHub Actions workflow (.github/workflows/deploy.yml).
 # Do NOT add build: sections to this file.
 #
+# Image tags are passed via environment (CI export or ../.secrets/env):
+#   HUMMINGBOT_IMAGE=ghcr.io/<owner>/hummingbot-core:latest
+#   GATEWAY_IMAGE=ghcr.io/<owner>/hummingbot-gateway:latest
+#
 # Secrets are loaded from ../.secrets/env on the server (chmod 600).
 # Create from .env.example — see First-Time Setup below.
 #
 # Server directory layout:
-#   /opt/sol-pump-bot/
-#     hummingbot/      ← this repo (git clone yauhenpinchuk/hummingbot)
+#   /opt/hummingbot-stack/
+#     hummingbot/      ← this repo
 #     .secrets/env     ← secrets file, never committed
 #
 # First-time setup on server:
-#   mkdir -p /opt/sol-pump-bot/.secrets
-#   cp hummingbot/.env.example /opt/sol-pump-bot/.secrets/env
-#   chmod 600 /opt/sol-pump-bot/.secrets/env
-#   nano /opt/sol-pump-bot/.secrets/env   ← fill in real passwords
+#   mkdir -p /opt/hummingbot-stack/.secrets
+#   cp hummingbot/.env.example /opt/hummingbot-stack/.secrets/env
+#   chmod 600 /opt/hummingbot-stack/.secrets/env
+#   nano /opt/hummingbot-stack/.secrets/env   ← fill in real passwords
 #   Then trigger the "Setup wallet" workflow_dispatch in GitHub Actions.
 #
 # Deploy command (runs automatically via GitHub Actions on push to master):
+#   export HUMMINGBOT_IMAGE=... GATEWAY_IMAGE=...
 #   docker compose -f docker-compose.prod.yml --env-file ../.secrets/env pull
 #   docker compose -f docker-compose.prod.yml --env-file ../.secrets/env up -d
 #
@@ -32,8 +37,8 @@
 services:
   # ─── Gateway ────────────────────────────────────────────────────────────────
   gateway:
-    image: ghcr.io/yauhenpinchuk/sol-pump-gateway:latest
-    container_name: sol_pump_gateway
+    image: ${GATEWAY_IMAGE}
+    container_name: hummingbot_gateway
     restart: unless-stopped
     ports:
       - "127.0.0.1:15888:15888"   # localhost only — not publicly exposed
@@ -58,8 +63,8 @@ services:
 
   # ─── Hummingbot ─────────────────────────────────────────────────────────────
   hummingbot:
-    image: ghcr.io/yauhenpinchuk/sol-pump-hummingbot:latest
-    container_name: sol_pump_hummingbot
+    image: ${HUMMINGBOT_IMAGE}
+    container_name: hummingbot_core
     restart: unless-stopped
     network_mode: host             # reaches gateway on localhost:15888
     depends_on:
