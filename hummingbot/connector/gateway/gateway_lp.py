@@ -84,6 +84,9 @@ class GatewayLp(GatewaySwap):
     Maintains order tracking and wallet interactions in the base class.
     """
 
+    POLL_INTERVAL = 5.0  # Solana RPC-friendly: check order status every 5s instead of 1s
+    BALANCE_POLL_INTERVAL = 300.0  # Solana RPC-friendly: update balances every 5 min instead of 1 min
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         # Store LP operation metadata for triggering proper events
@@ -340,7 +343,7 @@ class GatewayLp(GatewaySwap):
             self.logger().error(f"Error getting pool address for {trading_pair}: {e}")
             return None
 
-    @async_ttl_cache(ttl=5, maxsize=10)
+    @async_ttl_cache(ttl=30, maxsize=10)
     async def get_pool_info_by_address(
         self,
         pool_address: str,
@@ -1002,7 +1005,7 @@ class GatewayLp(GatewaySwap):
         except Exception as e:
             self._handle_operation_failure(order_id, trading_pair, "removing AMM liquidity", e)
 
-    @async_ttl_cache(ttl=5, maxsize=10)
+    @async_ttl_cache(ttl=60, maxsize=10)
     async def get_position_info(
         self,
         trading_pair: str,
