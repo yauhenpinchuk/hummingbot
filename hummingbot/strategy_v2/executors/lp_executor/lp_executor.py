@@ -104,10 +104,26 @@ class LPExecutor(ExecutorBase):
         config_width = (config_upper - config_lower) / config_lower if config_lower else Decimal("0")
 
         sorted_positions = sorted(positions, key=position_width)
-        # rank = number of on-chain positions narrower than our config width
-        rank = sum(1 for p in sorted_positions if position_width(p) < config_width)
-        rank = min(rank, len(sorted_positions) - 1)
-        pos = sorted_positions[rank]
+        # Match by closest width: find the on-chain position whose width is nearest
+        # to this executor's config width. This correctly pairs narrow→narrow and
+        # wide→wide even when on-chain widths are slightly different from config
+        # (e.g. due to price movement between creation and adoption).
+        pos = min(sorted_positions, key=lambda p: abs(position_width(p) - config_width))
+        rank = sorted_positions.index(pos)
+
+        # Only adopt if the closest match is within 2x of the expected config width.
+        # This prevents a newly-created executor (after a rebalance) from adopting a
+        # position of a completely different width when its own position is not yet
+        # on-chain (e.g. narrow executor seeing only the wide position in the pool).
+        if config_width > Decimal("0"):
+            width_ratio = position_width(pos) / config_width
+            if width_ratio < Decimal("0.5") or width_ratio > Decimal("2.0"):
+                self.logger().debug(
+                    f"No suitable existing position found (closest width={float(position_width(pos)):.3%}, "
+                    f"config width={float(config_width):.3%}, ratio={float(width_ratio):.2f}x). "
+                    f"Executor will create a new position."
+                )
+                return
 
         self.logger().info(
             f"Adopting existing position {pos.address} "
