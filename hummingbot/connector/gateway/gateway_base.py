@@ -37,6 +37,10 @@ class GatewayBase(ConnectorBase):
     POLL_INTERVAL = 1.0
     BALANCE_POLL_INTERVAL = 60.0  # Update balances every 60 seconds
     APPROVAL_ORDER_ID_PATTERN = re.compile(r"approve-(\w+)-(\w+)")
+    # Solana blockhashes expire after ~150 slots (~60s). Any transaction still
+    # PENDING after this many seconds is assumed expired and is marked FAILED so
+    # the executor can retry rather than waiting indefinitely.
+    PENDING_TX_TIMEOUT_SECONDS = 120
 
     _connector_name: str
     _name: str
@@ -634,7 +638,33 @@ class GatewayBase(ConnectorBase):
 
             # Check if transaction is still pending
             elif tx_status == TransactionStatus.PENDING.value:
-                pass
+                # Solana blockhashes expire after ~60s. If this transaction has been
+                # pending longer than PENDING_TX_TIMEOUT_SECONDS it will never confirm —
+                # mark it FAILED so the executor can retry instead of waiting forever.
+                # This also handles stale orders restored from MarketState on restart:
+                # their creation_timestamp is old, so they time out on the first poll.
+                pending_seconds = self.current_timestamp - tracked_order.creation_timestamp
+                if pending_seconds > self.PENDING_TX_TIMEOUT_SECONDS:
+                    self.logger().warning(
+                        f"Transaction {tracked_order.exchange_order_id} for order "
+                        f"{tracked_order.client_order_id} has been PENDING for "
+                        f"{pending_seconds:.0f}s (limit {self.PENDING_TX_TIMEOUT_SECONDS}s). "
+                        f"Marking as FAILED — blockhash likely expired."
+                    )
+                    order_update = OrderUpdate(
+                        client_order_id=tracked_order.client_order_id,
+                        trading_pair=tracked_order.trading_pair,
+                        update_timestamp=self.current_timestamp,
+                        new_state=OrderState.FAILED,
+                    )
+                    self._order_tracker.process_order_update(order_update)
+                    self.trigger_event(
+                        MarketEvent.TransactionFailure,
+                        MarketTransactionFailureEvent(
+                            timestamp=self.current_timestamp,
+                            order_id=tracked_order.client_order_id,
+                        )
+                    )
 
             # Transaction failed
             elif tx_status == TransactionStatus.FAILED.value:
